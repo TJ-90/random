@@ -37,14 +37,14 @@ jobs:
       - name: Test
         run: flutter test
 
-      - name: Build debug APK
-        run: flutter build apk --debug
+      - name: Build release APK
+        run: flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
-          name: drillcalc-android-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: drillcalc-android-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
 
   ios:
