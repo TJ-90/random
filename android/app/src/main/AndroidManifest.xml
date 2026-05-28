@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="drillcalc"
+        android:label="DrillCalc Field"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
