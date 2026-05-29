@@ -15,6 +15,7 @@ class WellControlInputs {
     required this.casingShoeTvdFt,
     required this.sidppPsi,
     required this.sicpPsi,
+    required this.influxAnalysisSicpPsi,
     required this.pitGainBbl,
     required this.lotFitEmwPpg,
     required this.mudWeightDuringFitPpg,
@@ -39,14 +40,15 @@ class WellControlInputs {
       casingShoeTvdFt: 14335,
       sidppPsi: 730,
       sicpPsi: 2600,
-      pitGainBbl: 15,
+      influxAnalysisSicpPsi: 5000,
+      pitGainBbl: 0,
       lotFitEmwPpg: 19.3,
       mudWeightDuringFitPpg: 19.3,
       drillPipeOdIn: 5.5,
       drillCollarOdIn: 6.5,
       drillCollarLengthFt: 51.86,
       slowCirculatingPressurePsi: 280,
-      surfaceToBitStrokes: 1200,
+      surfaceToBitStrokes: 3065.6320364170942,
       gasGradientPsiPerFt: 0.1,
       safetyMarginPsi: 100,
       pressureIncrementPsi: 100,
@@ -62,6 +64,7 @@ class WellControlInputs {
   final double casingShoeTvdFt;
   final double sidppPsi;
   final double sicpPsi;
+  final double influxAnalysisSicpPsi;
   final double pitGainBbl;
   final double lotFitEmwPpg;
   final double mudWeightDuringFitPpg;
@@ -314,11 +317,10 @@ class WellControlCalculator {
       inputs.currentMudWeightPpg,
       math.max(0, inputs.holeTvdFt - influxHeight).toDouble(),
     );
-    final influxHydrostatic = inputs.pitGainBbl <= 0 || influxHeight <= 0
-        ? 0.0
-        : kill.formationPressurePsi -
-              inputs.sicpPsi -
-              mudHydrostaticAboveInflux;
+    final influxHydrostatic =
+        kill.formationPressurePsi -
+        inputs.influxAnalysisSicpPsi -
+        mudHydrostaticAboveInflux;
     final influxGradient = influxHeight <= 0
         ? 0.0
         : influxHydrostatic / influxHeight;
@@ -333,7 +335,7 @@ class WellControlCalculator {
       mudWeightPpg: kill.killMudWeightPpg,
       casingShoeTvdFt: inputs.casingShoeTvdFt,
     );
-    final type = classifyInflux(influxGradient, inputs.pitGainBbl);
+    final type = classifyInflux(influxGradient);
 
     return InfluxAnalysisResult(
       bottomHolePressurePsi: kill.formationPressurePsi,
@@ -346,7 +348,7 @@ class WellControlCalculator {
       influxType: type,
       maaspCurrentMudPsi: maaspCurrent,
       maaspKillMudPsi: maaspKill,
-      canCirculateSafely: inputs.sicpPsi < maaspCurrent,
+      canCirculateSafely: inputs.influxAnalysisSicpPsi < maaspCurrent,
       recommendedAction: _recommendedAction(type),
     );
   }
@@ -474,34 +476,28 @@ double influxHeightFromVolume({
       (volumeBbl - lowerSectionVolume) / upperCapacityBblPerFt;
 }
 
-String classifyInflux(double gradientPsiPerFt, double pitGainBbl) {
-  if (pitGainBbl <= 0) {
-    return 'No pit gain entered';
-  }
+String classifyInflux(double gradientPsiPerFt) {
   if (gradientPsiPerFt < 0.15) {
-    return 'Gas kick';
+    return 'GAS KICK';
   }
   if (gradientPsiPerFt < 0.25) {
-    return 'Gas-cut mud or light oil';
+    return 'GAS-CUT MUD/OIL';
   }
   if (gradientPsiPerFt < 0.40) {
-    return 'Oil kick';
+    return 'OIL KICK';
   }
   if (gradientPsiPerFt < 0.45) {
-    return 'Saltwater kick';
+    return 'SALTWATER KICK';
   }
-  return 'Saltwater or heavy brine';
+  return 'SALTWATER / HEAVY BRINE';
 }
 
 String _recommendedAction(String influxType) {
-  if (influxType == 'No pit gain entered') {
-    return 'Enter pit gain before classifying the influx.';
+  if (influxType == 'GAS KICK') {
+    return 'W&W or Drillers - GAS: max casing pr during kill';
   }
-  if (influxType == 'Gas kick') {
-    return 'Use maximum MAASP discipline and prepare for gas expansion.';
+  if (influxType == 'GAS-CUT MUD/OIL' || influxType == 'OIL KICK') {
+    return 'W&W preferred - monitor casing pr closely';
   }
-  if (influxType == 'Oil kick' || influxType == 'Gas-cut mud or light oil') {
-    return 'Prefer wait and weight where practical; monitor casing pressure.';
-  }
-  return 'Check loss risk and confirm formation strength before circulating.';
+  return 'W&W - lower risk, less gas expansion';
 }

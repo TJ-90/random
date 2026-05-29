@@ -12,9 +12,11 @@ void main() {
       expect(result.formationPressurePsi, closeTo(14240.0, 0.1));
       expect(result.killMudWeightPpg, closeTo(19.08, 0.01));
       expect(result.initialCirculatingPressurePsi, closeTo(1010, 0.1));
-      expect(result.finalCirculatingPressurePsi, closeTo(295.2, 0.1));
+      expect(result.finalCirculatingPressurePsi, closeTo(295.1, 0.1));
+      expect(result.dropPerHundredStrokesPsi, closeTo(23.3, 0.1));
       expect(result.pressureSchedule.first.strokes, 0);
       expect(result.pressureSchedule.first.pressurePsi, closeTo(1010, 0.1));
+      expect(result.pressureSchedule[1].pressurePsi, closeTo(986.7, 0.1));
     });
 
     test('calculates kick tolerance envelope', () {
@@ -28,12 +30,19 @@ void main() {
       expect(result.maxKillMudWeightNoInfluxPpg, closeTo(19.27, 0.01));
     });
 
-    test('classifies gas influx when gradient is below gas threshold', () {
+    test('matches workbook influx analysis with stabilized SICP input', () {
       final result = calculator.influxAnalysis();
 
-      expect(result.influxType, 'Gas kick');
-      expect(result.influxHeightFt, greaterThan(200));
-      expect(result.influxGradientPsiPerFt, lessThan(0.15));
+      expect(result.bottomHolePressurePsi, closeTo(14240.0, 0.1));
+      expect(result.killMudWeightPpg, closeTo(19.08, 0.01));
+      expect(result.influxType, 'GAS KICK');
+      expect(result.influxHeightFt, closeTo(0, 0.01));
+      expect(result.influxGradientPsiPerFt, closeTo(0, 0.01));
+      expect(result.influxDensityPpg, closeTo(0, 0.01));
+      expect(
+        result.recommendedAction,
+        'W&W or Drillers - GAS: max casing pr during kill',
+      );
       expect(result.canCirculateSafely, isFalse);
     });
 
