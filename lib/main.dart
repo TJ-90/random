@@ -252,7 +252,11 @@ class _GenericCalculatorScreenState extends State<GenericCalculatorScreen> {
                         SizedBox(width: 390, child: _buildInputColumn()),
                         const SizedBox(width: 20),
                         Expanded(
-                          child: _buildResultColumn(keyResults, results),
+                          child: _buildResultColumn(
+                            keyResults,
+                            results,
+                            values,
+                          ),
                         ),
                       ],
                     )
@@ -261,7 +265,7 @@ class _GenericCalculatorScreenState extends State<GenericCalculatorScreen> {
                       children: [
                         _buildInputColumn(),
                         const SizedBox(height: 16),
-                        _buildResultColumn(keyResults, results),
+                        _buildResultColumn(keyResults, results, values),
                       ],
                     );
 
@@ -327,7 +331,11 @@ class _GenericCalculatorScreenState extends State<GenericCalculatorScreen> {
   Widget _buildResultColumn(
     List<FieldCalculatorResult> keyResults,
     List<FieldCalculatorResult> results,
+    Map<String, double> values,
   ) {
+    final inputTrace = workbookInputTrace(widget.definition, values);
+    final formulaNotes = workbookFormulaNotes(widget.definition);
+
     return _Reveal(
       offset: const Offset(0, 16),
       child: Column(
@@ -356,10 +364,26 @@ class _GenericCalculatorScreenState extends State<GenericCalculatorScreen> {
                 .toList(),
           ),
           const SizedBox(height: 12),
+          _SectionCard(
+            title: 'Workbook Inputs',
+            icon: Icons.table_rows_outlined,
+            children: inputTrace
+                .map((result) => _CalculatorResultRow(result: result))
+                .toList(),
+          ),
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: 'Formula Detail',
+            icon: Icons.functions,
+            children: formulaNotes
+                .map((result) => _CalculatorResultRow(result: result))
+                .toList(),
+          ),
+          const SizedBox(height: 12),
           _Notice(
             icon: Icons.info_outline,
             text:
-                'Inputs are editable defaults from the workbook calculators. Recheck units before using a result.',
+                'Inputs, formulas, and intermediate values are shown for audit. Recheck units before using a result.',
             tone: _NoticeTone.warning,
           ),
         ],
@@ -1405,7 +1429,24 @@ class _CalculatorResultRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final toneColor = _toneColor(context, result.tone);
+    final valueIsLong = result.displayValue.length > 34;
+
+    if (valueIsLong) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              result.label,
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
+            const SizedBox(height: 5),
+            _ResultValuePill(result: result, alignRight: false),
+          ],
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1422,32 +1463,47 @@ class _CalculatorResultRow extends StatelessWidget {
           Flexible(
             child: Align(
               alignment: Alignment.centerRight,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                curve: Curves.easeOutCubic,
-                padding: result.tone == FieldCalculatorTone.neutral
-                    ? EdgeInsets.zero
-                    : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: result.tone == FieldCalculatorTone.neutral
-                      ? Colors.transparent
-                      : toneColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: _AnimatedValueText(
-                  value: result.displayValue,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    color: result.tone == FieldCalculatorTone.neutral
-                        ? colors.onSurface
-                        : toneColor,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
+              child: _ResultValuePill(result: result),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ResultValuePill extends StatelessWidget {
+  const _ResultValuePill({required this.result, this.alignRight = true});
+
+  final FieldCalculatorResult result;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final toneColor = _toneColor(context, result.tone);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      padding: result.tone == FieldCalculatorTone.neutral
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: result.tone == FieldCalculatorTone.neutral
+            ? Colors.transparent
+            : toneColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: _AnimatedValueText(
+        value: result.displayValue,
+        textAlign: alignRight ? TextAlign.right : TextAlign.left,
+        style: TextStyle(
+          color: result.tone == FieldCalculatorTone.neutral
+              ? colors.onSurface
+              : toneColor,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }

@@ -46,6 +46,38 @@ void main() {
       expect(_result(thickening, 'Job verdict'), 'DANGER - redesign slurry');
       expect(_result(thickening, 'Extra annular pressure'), '56.9');
     });
+
+    test(
+      'exposes workbook input trace and formula notes for every calculator',
+      () {
+        for (final calculator in fieldCalculators) {
+          final values = {
+            for (final input in calculator.inputs) input.id: input.defaultValue,
+          };
+          final inputTrace = workbookInputTrace(calculator, values);
+          final formulaNotes = workbookFormulaNotes(calculator);
+
+          expect(inputTrace.first.label, 'Source sheet');
+          expect(inputTrace.first.value, isNotEmpty);
+          expect(inputTrace.length, calculator.inputs.length + 1);
+          expect(formulaNotes, isNotEmpty);
+        }
+      },
+    );
+
+    test('exposes specific hidden formula details from workbook tabs', () {
+      final bits = fieldCalculatorById('bits-lcm');
+      final cementing = fieldCalculatorById('cementing-calculator');
+
+      expect(
+        _formula(bits, 'Nozzle pressure drop'),
+        'flowRate^2 * mudWeight / (10858 * TFA)',
+      );
+      expect(
+        _formula(cementing, 'Displacement'),
+        'insideVolume - shoeTrackVolume - underDisplacement',
+      );
+    });
   });
 }
 
@@ -59,4 +91,10 @@ List<FieldCalculatorResult> _calculateDefaults(String id) {
 
 String _result(List<FieldCalculatorResult> results, String label) {
   return results.firstWhere((result) => result.label == label).value;
+}
+
+String _formula(FieldCalculatorDefinition definition, String label) {
+  return workbookFormulaNotes(
+    definition,
+  ).firstWhere((result) => result.label == label).value;
 }

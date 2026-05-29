@@ -73,6 +73,48 @@ FieldCalculatorDefinition fieldCalculatorById(String id) {
   return _fieldCalculators.firstWhere((calculator) => calculator.id == id);
 }
 
+List<FieldCalculatorResult> workbookInputTrace(
+  FieldCalculatorDefinition definition,
+  Map<String, double> values,
+) {
+  return [
+    FieldCalculatorResult(
+      label: 'Source sheet',
+      value: workbookSourceSheet(definition),
+    ),
+    for (final input in definition.inputs)
+      _num(
+        input.label,
+        values[input.id] ?? input.defaultValue,
+        input.unit,
+        digits: input.fractionDigits ?? _inputTraceDigits(input.defaultValue),
+      ),
+  ];
+}
+
+List<FieldCalculatorResult> workbookFormulaNotes(
+  FieldCalculatorDefinition definition,
+) {
+  final formulas = _workbookFormulaNotes[definition.id];
+  if (formulas == null) {
+    return const [
+      FieldCalculatorResult(
+        label: 'Formula model',
+        value: 'Workbook formulas ported as live Dart calculations',
+      ),
+    ];
+  }
+
+  return [
+    for (final formula in formulas.entries)
+      FieldCalculatorResult(label: formula.key, value: formula.value),
+  ];
+}
+
+String workbookSourceSheet(FieldCalculatorDefinition definition) {
+  return _workbookSourceSheets[definition.id] ?? definition.title;
+}
+
 final List<FieldCalculatorDefinition> _fieldCalculators = [
   FieldCalculatorDefinition(
     id: 'bits-lcm',
@@ -2248,6 +2290,199 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
   ),
 ];
 
+const Map<String, String> _workbookSourceSheets = {
+  'bits-lcm': 'Bits & LCM',
+  'hole-cleaning': 'Hole Cleaning',
+  'loss-monitoring': 'Loss monitoring',
+  'pipe-stretch': 'Pipe Stretch calculator',
+  'fishing-backoff': 'Fishing (Stringshot & backoff)',
+  'fit-calc': 'FIT CALC',
+  'mud-mixing': 'Mud Mixing Calculator',
+  'fasdrill': 'FASDRILL',
+  'step-down-fasdrill': 'STEP DOWN FASDRILL',
+  'casing-hydraulic-force': 'CSG HYDRAULICING FORCE',
+  'stuck-pipe-identification': 'STUCK PIPE IDENTIFICATION',
+  'directional-wells': 'DIRECTIONAL WELLS',
+  'balanced-plug': 'Balanced Plug',
+  'wiper-plug-cementation': 'Wiper plug Cementation',
+  'liner-cementation': 'Liner cementation',
+  'api-13d-power-law': 'Hydraulics-API 13D Power Law',
+  'bingham': 'Bingham',
+  'hydraulics': 'HYDRAULICS',
+  'cutting-skips': 'Cutting Skips Estimator',
+  'whipstock': 'Whipstock',
+  'whipstock-fishing': 'Whipstock Fishing',
+  'squeeze-cementing-ezsv': 'Squeeze cementing EZSV',
+  'actual-result-squeeze': 'Actual Result Squeeze',
+  'balanced-plug-3-case': 'Balanced Plug 3-Case',
+  'cementing-calculator': 'Cementing Calculator',
+  'thickening-time': 'Thickening Time',
+};
+
+const Map<String, Map<String, String>> _workbookFormulaNotes = {
+  'bits-lcm': {
+    'Nozzle area': 'nozzleSize^2 / 1303.8',
+    'TFA': 'singleNozzleArea * nozzleCount',
+    'Nozzle pressure drop': 'flowRate^2 * mudWeight / (10858 * TFA)',
+    'HHP': 'nozzlePressureDrop * flowRate / 1714',
+    'HSI': 'HHP * 1.27 / holeDiameter^2',
+    'LCM pass limit': 'hydraulicDiameter * 25.4 / 3 vs maxParticle * 0.8',
+  },
+  'hole-cleaning': {
+    'Annular area': '(holeSize^2 - pipeOd^2) / 1029.4',
+    'Annular velocity': '24.51 * flowRate / (holeSize^2 - pipeOd^2)',
+    'Rheology factor': 'sheet piecewise RF from PV, YP, and hole size',
+    'Angle factor': 'SPE 27486 angle lookup',
+    'Transport index': 'RF * AF * mudWeightSG',
+    'Critical flow rate': 'base CFR * washout correction',
+  },
+  'loss-monitoring': {
+    'Calculated loss': 'max(0, pumpedVolume - returnedVolume)',
+    'Observed loss': 'max(0, -pitGain)',
+    'Best loss estimate': 'max(calculatedLoss, observedLoss)',
+    'Loss rate': 'bestLoss * 60 / elapsedMinutes',
+  },
+  'pipe-stretch': {
+    'Steel area': 'pi * (pipeOd^2 - pipeId^2) / 4',
+    'Calculated stretch': 'overpullLb * lengthFt * 12 / (30000000 * area)',
+    'Free point': 'measuredStretch * 30000000 * area / (overpullLb * 12)',
+    'Rule of thumb': '0.75 ft per 1000 ft of pipe',
+  },
+  'fishing-backoff': {
+    'Buoyancy factor': '(65.5 - mudWeight) / 65.5',
+    'Buoyed string weight': 'freePoint * pipeWeight * buoyancy / 1000',
+    'Backoff turns': 'freePoint * turnsPerThousand / 1000',
+    'Neutral weight': 'buoyedWeight - workingOverpull',
+  },
+  'fit-calc': {
+    'Hole volume': 'depthTvd * holeDiameter^2 / 1029.4',
+    'Required pressure': '(fitEmw - mudWeight) * depthTvd * 0.052',
+    'Expected volume': 'holeVolume * requiredPressure * compressibility',
+    'Expected strokes': 'expectedVolume / pumpOutput',
+  },
+  'mud-mixing': {
+    'Barite density': 'bariteSG * 350',
+    'Final weighted volume':
+        'initialVolume * (bariteDensity - initialWeight*42) / (bariteDensity - targetWeight*42)',
+    'Barite pounds': 'bariteDensity * (finalVolume - initialVolume)',
+    'Dilution volume': 'mass balance against baseFluidWeight',
+  },
+  'fasdrill': {
+    'HHP': 'bitPressureDrop * flowRate / 1714',
+    'HSI': 'HHP / bitArea',
+    'Bit pressure share': 'bitPressureDrop / surfacePressure',
+    'Optimum impact drop': '2 / (m + 2) * maxPressure',
+    'Optimum HHP drop': '1 / (m + 1) * maxPressure',
+  },
+  'step-down-fasdrill': {
+    'Dynamic pressure': 'referencePressure - staticOffset',
+    'Target pressure':
+        'staticOffset + dynamicPressure * (targetFlow/referenceFlow)^m',
+    'Pressure drop': 'referencePressure - targetPressure',
+  },
+  'casing-hydraulic-force': {
+    'Inside area': 'pi * casingId^2 / 4',
+    'Steel area': 'pi * (casingOd^2 - casingId^2) / 4',
+    'Hydraulic force': 'pressure * insideArea / 1000',
+    'Shoe track volume': 'casingId^2 / 1029.4 * shoeTrackLength',
+  },
+  'stuck-pipe-identification': {
+    'Differential score': 'circulation + no-rotation + stationary indicators',
+    'Packoff score': 'no-circulation + pressure increase + blocked movement',
+    'Keyseat score': 'rotation + no down movement + overpull indicators',
+    'Diagnosis': 'largest mechanism score wins',
+  },
+  'directional-wells': {
+    'Dogleg angle': 'minimum curvature cosine formula',
+    'Ratio factor': '2 / dogleg * tan(dogleg / 2)',
+    'TVD increment': 'course/2 * (cos inc1 + cos inc2) * RF',
+    'North/East': 'minimum curvature displacement components',
+  },
+  'balanced-plug': {
+    'Annulus capacity': '(holeId^2 - dpOd^2) / 1029.4',
+    'TOC': 'plugBottom - plugHeight',
+    'Spacer top': 'plugBottom - plugHeight - spacerLength',
+    'Displacement': 'plugBottom * dpCapacity - internalPlug - postFlush - 3',
+  },
+  'wiper-plug-cementation': {
+    'Casing capacity': 'casingId^2 / 1029.4',
+    'Inside volume': 'surfaceLineVolume + casingCapacity * floatCollarDepth',
+    'Displacement': 'insideVolume - shoeTrackVolume - underDisplacement',
+    'Strokes': 'displacement / pumpOutput',
+  },
+  'liner-cementation': {
+    'Open-hole annulus': '(holeDiameter^2 - linerOd^2) / 1029.4',
+    'Slurry volume': 'openHoleVolume * (1 + excess) + overlapVolume',
+    'Sacks': 'slurryVolume * 5.6146 / slurryYield',
+    'Displacement': 'linerId^2 / 1029.4 * linerLength',
+  },
+  'api-13d-power-law': {
+    'Flow index n': '3.32 * log10(theta600 / theta300)',
+    'Consistency K': 'theta300 / 511^n',
+    'Annular velocity': '24.48 * flowRate / (hole^2 - pipeOd^2)',
+    'Pressure loss': 'API 13D power-law annular pressure snapshot',
+  },
+  'bingham': {
+    'PV': 'theta600 - theta300',
+    'YP': 'theta300 - PV',
+    'Nozzle pressure drop': 'mudWeight * flowRate^2 / (10858 * TFA^2)',
+    'Nozzle velocity': '0.321 * flowRate / TFA',
+  },
+  'hydraulics': {
+    'Bit HHP': 'bitPressureDrop * flowRate / 1714',
+    'ECD': 'mudWeight + annulusPressureLoss / (0.052 * TVD)',
+    'Lag time': 'annulusVolume * 42 / flowRate',
+    'Bit pressure share': 'bitPressureDrop / surfacePressure',
+  },
+  'cutting-skips': {
+    'Gauge hole volume': 'holeDiameter^2 / 1029.4 * intervalLength',
+    'Bulk cuttings volume': 'holeVolume * (1 + washout) * bulkFactor',
+    'Estimated skips': 'bulkCuttingsVolume / skipCapacity',
+  },
+  'whipstock': {
+    'Window offset': 'tan(rampAngle) * windowLength',
+    'Added inclination': 'buildRate * sidetrackLength / 100',
+    'Projected offset': 'windowOffset + sin(averageAngle) * sidetrackLength',
+  },
+  'whipstock-fishing': {
+    'Pickup requirement': 'fishWeight + dragAllowance',
+    'Overpull margin': 'availableOverpull - pickupRequirement',
+    'Jar energy proxy': 'overpullLb * jarStroke / 12',
+  },
+  'squeeze-cementing-ezsv': {
+    'Annular capacity': '(holeDiameter^2 - pipeOd^2) / 1029.4',
+    'Squeeze volume': 'annularCapacity * intervalLength * (1 + excess)',
+    'Cement sacks': 'squeezeVolume * 5.6146 / slurryYield',
+    'Pressure margin': 'maxPressure - plannedPressure',
+  },
+  'actual-result-squeeze': {
+    'Retained volume': 'max(0, pumpedVolume - returnsVolume)',
+    'Retention': 'retainedVolume / pumpedVolume',
+    'Final EMW': 'mudWeight + finalPressure / (0.052 * depthTvd)',
+  },
+  'balanced-plug-3-case': {
+    'Open-hole volume': '(plugBottom - shoeDepth) * ohSize^2 / 1029.4',
+    'Remaining cement': 'plugVolume - openHoleVolume',
+    'Plug height': 'open-hole height + remaining / (dpCapacity + casedAnnulus)',
+    'Placement case': 'volume comparison against open-hole capacity',
+  },
+  'cementing-calculator': {
+    'OH annular capacity': '(holeDiameter^2 - casingOd^2) / 1029.4',
+    'Cased annular capacity': '(previousCasingId^2 - casingOd^2) / 1029.4',
+    'Lead volume': 'leadOH*ohCap*(1+OH excess) + leadCased*casedCap',
+    'Tail volume': 'tailOH*ohCap*(1+OH excess) + shoeTrackVolume',
+    'Sacks': 'slurryVolume * 5.6146 / slurryYield',
+    'Displacement': 'insideVolume - shoeTrackVolume - underDisplacement',
+  },
+  'thickening-time': {
+    'API TT minutes': 'apiThickeningTimeHours * 60',
+    'Shear loss': 'apiMinutes * shearSensitivity',
+    'Safe working time': '(apiMinutes - shearLoss - batchMix) * (1 - margin)',
+    'Gel pressure': 'abs((SGSD / 300) * (TOC - depth) / (hole - pipe))',
+    'Rheology': 'PV = 300 rpm - 200 rpm; YP = 200 rpm - PV',
+  },
+};
+
 FieldCalculatorResult _num(
   String label,
   double value,
@@ -2280,6 +2515,16 @@ String _format(double value, int digits) {
 
 double _v(Map<String, double> values, String id) {
   return values[id] ?? 0;
+}
+
+int _inputTraceDigits(double value) {
+  if (value.abs() < 0.001 && value != 0) {
+    return 8;
+  }
+  if (value == value.roundToDouble()) {
+    return 0;
+  }
+  return 3;
 }
 
 double _safeDiv(double numerator, double denominator) {

@@ -35,6 +35,25 @@ void main() {
     expect(find.text('3066', skipOffstage: false), findsOneWidget);
   });
 
+  testWidgets('opens a calculator with workbook input and formula details', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const DrillCalcApp());
+
+    await tester.enterText(find.byType(TextField).first, 'Bits');
+    await tester.pump();
+    await tester.tap(find.text('Bits & LCM'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Workbook Inputs', skipOffstage: false), findsOneWidget);
+    expect(find.text('Formula Detail', skipOffstage: false), findsOneWidget);
+    expect(find.text('Source sheet', skipOffstage: false), findsOneWidget);
+    expect(
+      find.text('Nozzle pressure drop', skipOffstage: false),
+      findsWidgets,
+    );
+  });
+
   testWidgets('renders the first frame on a phone viewport', (tester) async {
     tester.view.physicalSize = const Size(393, 852);
     tester.view.devicePixelRatio = 1;
