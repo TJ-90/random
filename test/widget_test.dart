@@ -1,12 +1,33 @@
 import 'package:drillcalc/main.dart';
+import 'package:drillcalc/calculators/field_calculators.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('renders the well-control MVP shell', (tester) async {
+  testWidgets('renders the calculator library shell', (tester) async {
     await tester.pumpWidget(const DrillCalcApp());
 
     expect(find.text('DrillCalc Field'), findsOneWidget);
+    expect(
+      find.text(
+        '${fieldCalculators.length + 1} of ${fieldCalculators.length + 1} calculators ready',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Well Control'), findsWidgets);
+    expect(find.text('Bits & LCM'), findsOneWidget);
+    expect(find.text('Cementing Calculator'), findsOneWidget);
+    expect(find.text('Thickening Time'), findsOneWidget);
+  });
+
+  testWidgets('opens the existing well-control calculator from the hub', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const DrillCalcApp());
+
+    await tester.tap(find.text('Well Control').last);
+    await tester.pumpAndSettle();
+
     expect(find.text('Workbook-based well control'), findsOneWidget);
     expect(find.text('Kill Sheet', skipOffstage: false), findsOneWidget);
     expect(find.text('Kick Tolerance', skipOffstage: false), findsOneWidget);
@@ -24,7 +45,11 @@ void main() {
     await tester.pump();
 
     expect(find.text('DrillCalc Field'), findsOneWidget);
-    expect(find.text('Well Data'), findsOneWidget);
-    expect(find.text('Kill mud', skipOffstage: false), findsOneWidget);
+    expect(find.text('Well Control'), findsWidgets);
+    expect(find.text('Hydraulics'), findsWidgets);
+    expect(
+      find.text('Search calculators, categories, or field tasks'),
+      findsOneWidget,
+    );
   });
 }

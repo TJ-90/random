@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'calculators/field_calculators.dart';
 import 'calculators/well_control.dart';
 
 void main() {
@@ -58,13 +59,336 @@ class DrillCalcApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const WellControlScreen(),
+      home: const CalculatorLibraryScreen(),
     );
   }
 }
 
+class CalculatorLibraryScreen extends StatefulWidget {
+  const CalculatorLibraryScreen({super.key});
+
+  @override
+  State<CalculatorLibraryScreen> createState() =>
+      _CalculatorLibraryScreenState();
+}
+
+class _CalculatorLibraryScreenState extends State<CalculatorLibraryScreen> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _query.trim().toLowerCase();
+    final entries = _calculatorEntries.where((entry) {
+      if (query.isEmpty) {
+        return true;
+      }
+      return entry.title.toLowerCase().contains(query) ||
+          entry.category.toLowerCase().contains(query) ||
+          entry.summary.toLowerCase().contains(query);
+    }).toList();
+    final grouped = <String, List<_CalculatorEntry>>{};
+    for (final entry in entries) {
+      grouped.putIfAbsent(entry.category, () => []).add(entry);
+    }
+
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFEAF1EC), Color(0xFFF7F7F3)],
+          ),
+        ),
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 900;
+              return CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      wide ? 24 : 16,
+                      18,
+                      wide ? 24 : 16,
+                      28,
+                    ),
+                    sliver: SliverToBoxAdapter(
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1180),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _Reveal(
+                                child: _LibraryHeader(
+                                  controller: _searchController,
+                                  totalCount: _calculatorEntries.length,
+                                  visibleCount: entries.length,
+                                  onChanged: (value) {
+                                    setState(() => _query = value);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              _Reveal(
+                                offset: const Offset(0, 10),
+                                child: _Notice(
+                                  icon: Icons.verified_user_outlined,
+                                  text:
+                                      'Engineering draft. Verify results against approved company procedures before field use.',
+                                  tone: _NoticeTone.warning,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              if (entries.isEmpty)
+                                _Reveal(
+                                  child: _EmptyLibraryState(
+                                    onClear: () {
+                                      _searchController.clear();
+                                      setState(() => _query = '');
+                                    },
+                                  ),
+                                )
+                              else
+                                for (final section in grouped.entries) ...[
+                                  _CalculatorSection(
+                                    title: section.key,
+                                    entries: section.value,
+                                    onOpen: _openCalculator,
+                                  ),
+                                  const SizedBox(height: 14),
+                                ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openCalculator(_CalculatorEntry entry) {
+    final definition = entry.definition;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) {
+          if (definition == null) {
+            return const WellControlScreen(showBackButton: true);
+          }
+          return GenericCalculatorScreen(definition: definition);
+        },
+      ),
+    );
+  }
+}
+
+class GenericCalculatorScreen extends StatefulWidget {
+  const GenericCalculatorScreen({required this.definition, super.key});
+
+  final FieldCalculatorDefinition definition;
+
+  @override
+  State<GenericCalculatorScreen> createState() =>
+      _GenericCalculatorScreenState();
+}
+
+class _GenericCalculatorScreenState extends State<GenericCalculatorScreen> {
+  late final Map<String, TextEditingController> _controllers;
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = {
+      for (final input in widget.definition.inputs)
+        input.id: TextEditingController(text: input.formattedDefault),
+    };
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final values = _readValues();
+    final results = widget.definition.calculate(values);
+    final keyResults = results.take(4).toList();
+
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFEAF1EC), Color(0xFFF7F7F3)],
+          ),
+        ),
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 920;
+              final content = wide
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(width: 390, child: _buildInputColumn()),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: _buildResultColumn(keyResults, results),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildInputColumn(),
+                        const SizedBox(height: 16),
+                        _buildResultColumn(keyResults, results),
+                      ],
+                    );
+
+              return CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      wide ? 24 : 16,
+                      18,
+                      wide ? 24 : 16,
+                      28,
+                    ),
+                    sliver: SliverToBoxAdapter(
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1180),
+                          child: content,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputColumn() {
+    final definition = widget.definition;
+    return _Reveal(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _CalculatorDetailHeader(
+            title: definition.title,
+            category: definition.category,
+            summary: definition.summary,
+            icon: _calculatorIcon(definition.id, definition.category),
+            onReset: _reset,
+          ),
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: 'Inputs',
+            icon: Icons.tune,
+            children: definition.inputs
+                .map(
+                  (input) => _GenericNumberInput(
+                    definition: input,
+                    controller: _controllers[input.id]!,
+                    onChanged: () => setState(() {}),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultColumn(
+    List<FieldCalculatorResult> keyResults,
+    List<FieldCalculatorResult> results,
+  ) {
+    return _Reveal(
+      offset: const Offset(0, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (keyResults.isNotEmpty) ...[
+            _MetricGrid(
+              metrics: keyResults
+                  .map(
+                    (result) => _Metric(
+                      result.label,
+                      result.value,
+                      result.unit,
+                      _resultIcon(result.tone),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 12),
+          ],
+          _SectionCard(
+            title: 'Results',
+            icon: Icons.calculate_outlined,
+            children: results
+                .map((result) => _CalculatorResultRow(result: result))
+                .toList(),
+          ),
+          const SizedBox(height: 12),
+          _Notice(
+            icon: Icons.info_outline,
+            text:
+                'Inputs are editable defaults from the workbook calculators. Recheck units before using a result.',
+            tone: _NoticeTone.warning,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Map<String, double> _readValues() {
+    return {
+      for (final input in widget.definition.inputs)
+        input.id:
+            double.tryParse(_controllers[input.id]!.text.trim()) ??
+            input.defaultValue,
+    };
+  }
+
+  void _reset() {
+    setState(() {
+      for (final input in widget.definition.inputs) {
+        _controllers[input.id]!.text = input.formattedDefault;
+      }
+    });
+  }
+}
+
 class WellControlScreen extends StatefulWidget {
-  const WellControlScreen({super.key});
+  const WellControlScreen({super.key, this.showBackButton = false});
+
+  final bool showBackButton;
 
   @override
   State<WellControlScreen> createState() => _WellControlScreenState();
@@ -185,7 +509,18 @@ class _WellControlScreenState extends State<WellControlScreen> {
                       child: Center(
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 1180),
-                          child: content,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (widget.showBackButton) ...[
+                                _BackToLibraryButton(
+                                  label: 'Calculator library',
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                              content,
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -594,6 +929,526 @@ class _ResultsPanel extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _LibraryHeader extends StatelessWidget {
+  const _LibraryHeader({
+    required this.controller,
+    required this.totalCount,
+    required this.visibleCount,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final int totalCount;
+  final int visibleCount;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: colors.primary,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colors.primary.withValues(alpha: 0.24),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Icon(Icons.apps, color: colors.onPrimary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'DrillCalc Field',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$visibleCount of $totalCount calculators ready',
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              _StatusPill(label: 'Library', foreground: colors.primary),
+            ],
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: controller,
+            onChanged: onChanged,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Search calculators, categories, or field tasks',
+              prefixIcon: Icon(Icons.search, color: colors.primary),
+              suffixIcon: controller.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        controller.clear();
+                        onChanged('');
+                      },
+                      icon: const Icon(Icons.close),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _InputBadge(
+                icon: Icons.table_chart_outlined,
+                label: 'Workbook calculators',
+                foreground: colors.primary,
+                background: colors.primaryContainer.withValues(alpha: 0.5),
+              ),
+              _InputBadge(
+                icon: Icons.touch_app_outlined,
+                label: 'Tap to open',
+                foreground: const Color(0xFF6D4C00),
+                background: const Color(0xFFFFF0C2),
+              ),
+              _InputBadge(
+                icon: Icons.calculate_outlined,
+                label: 'Live results',
+                foreground: const Color(0xFF164B35),
+                background: const Color(0xFFE4F4EC),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyLibraryState extends StatelessWidget {
+  const _EmptyLibraryState({required this.onClear});
+
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return _SectionCard(
+      title: 'No Matches',
+      icon: Icons.search_off,
+      children: [
+        Text(
+          'Try a different term or clear the search.',
+          style: TextStyle(color: colors.onSurfaceVariant),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
+            onPressed: onClear,
+            icon: const Icon(Icons.close),
+            label: const Text('Clear'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CalculatorSection extends StatelessWidget {
+  const _CalculatorSection({
+    required this.title,
+    required this.entries,
+    required this.onOpen,
+  });
+
+  final String title;
+  final List<_CalculatorEntry> entries;
+  final ValueChanged<_CalculatorEntry> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return _Reveal(
+      offset: const Offset(0, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 2, right: 2, bottom: 8),
+            child: Row(
+              children: [
+                Icon(_categoryIcon(title), size: 20, color: colors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+                _StatusPill(
+                  label: '${entries.length}',
+                  foreground: colors.primary,
+                ),
+              ],
+            ),
+          ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 980
+                  ? 3
+                  : constraints.maxWidth >= 640
+                  ? 2
+                  : 1;
+              final spacing = 10.0;
+              final width =
+                  (constraints.maxWidth - spacing * (columns - 1)) / columns;
+              return Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: [
+                  for (final entry in entries)
+                    SizedBox(
+                      width: width,
+                      child: _CalculatorCard(
+                        entry: entry,
+                        onTap: () => onOpen(entry),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CalculatorCard extends StatelessWidget {
+  const _CalculatorCard({required this.entry, required this.onTap});
+
+  final _CalculatorEntry entry;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return _Pressable(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            constraints: const BoxConstraints(minHeight: 146),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: colors.surface.withValues(alpha: 0.98),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: colors.outlineVariant),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: colors.primaryContainer.withValues(alpha: 0.52),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(entry.icon, color: colors.primary, size: 20),
+                    ),
+                    const Spacer(),
+                    Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  entry.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  entry.summary,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    height: 1.25,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CalculatorDetailHeader extends StatelessWidget {
+  const _CalculatorDetailHeader({
+    required this.title,
+    required this.category,
+    required this.summary,
+    required this.icon,
+    required this.onReset,
+  });
+
+  final String title;
+  final String category;
+  final String summary;
+  final IconData icon;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              _Pressable(
+                child: IconButton.filledTonal(
+                  onPressed: () => Navigator.of(context).pop(),
+                  tooltip: 'Back to library',
+                  icon: const Icon(Icons.arrow_back),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: colors.primary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: colors.onPrimary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(category, style: TextStyle(color: colors.primary)),
+                  ],
+                ),
+              ),
+              _Pressable(
+                child: IconButton.filledTonal(
+                  onPressed: onReset,
+                  tooltip: 'Reset default values',
+                  icon: const Icon(Icons.restart_alt),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(summary, style: TextStyle(color: colors.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+}
+
+class _BackToLibraryButton extends StatelessWidget {
+  const _BackToLibraryButton({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: _Pressable(
+        child: FilledButton.tonalIcon(
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.arrow_back),
+          label: Text(label),
+        ),
+      ),
+    );
+  }
+}
+
+class _GenericNumberInput extends StatelessWidget {
+  const _GenericNumberInput({
+    required this.definition,
+    required this.controller,
+    required this.onChanged,
+  });
+
+  final FieldCalculatorInput definition;
+  final TextEditingController controller;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        textInputAction: TextInputAction.next,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+        onChanged: (_) => onChanged(),
+        decoration: InputDecoration(
+          labelText: definition.label,
+          suffixText: definition.unit,
+          suffixStyle: TextStyle(
+            color: colors.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+          prefixIcon: Icon(Icons.calculate_outlined, color: colors.primary),
+          isDense: true,
+        ),
+      ),
+    );
+  }
+}
+
+class _CalculatorResultRow extends StatelessWidget {
+  const _CalculatorResultRow({required this.result});
+
+  final FieldCalculatorResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final toneColor = _toneColor(context, result.tone);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              result.label,
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOutCubic,
+                padding: result.tone == FieldCalculatorTone.neutral
+                    ? EdgeInsets.zero
+                    : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: result.tone == FieldCalculatorTone.neutral
+                      ? Colors.transparent
+                      : toneColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: _AnimatedValueText(
+                  value: result.displayValue,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: result.tone == FieldCalculatorTone.neutral
+                        ? colors.onSurface
+                        : toneColor,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1505,6 +2360,139 @@ final _fieldDefinitions = [
     rawValue: (inputs) => inputs.pressureIncrementPsi,
   ),
 ];
+
+class _CalculatorEntry {
+  const _CalculatorEntry({
+    required this.title,
+    required this.category,
+    required this.summary,
+    required this.icon,
+    this.definition,
+  });
+
+  final String title;
+  final String category;
+  final String summary;
+  final IconData icon;
+  final FieldCalculatorDefinition? definition;
+}
+
+List<_CalculatorEntry> get _calculatorEntries {
+  return [
+    const _CalculatorEntry(
+      title: 'Well Control',
+      category: 'Well Control',
+      summary:
+          'Kill sheet, kick tolerance, influx analysis, and volumetric method.',
+      icon: Icons.oil_barrel,
+    ),
+    for (final definition in fieldCalculators)
+      _CalculatorEntry(
+        title: definition.title,
+        category: definition.category,
+        summary: definition.summary,
+        icon: _calculatorIcon(definition.id, definition.category),
+        definition: definition,
+      ),
+  ];
+}
+
+IconData _calculatorIcon(String id, String category) {
+  switch (id) {
+    case 'bits-lcm':
+      return Icons.grain;
+    case 'hole-cleaning':
+      return Icons.cleaning_services_outlined;
+    case 'loss-monitoring':
+      return Icons.water_drop_outlined;
+    case 'pipe-stretch':
+      return Icons.open_in_full;
+    case 'fishing-backoff':
+      return Icons.anchor;
+    case 'fit-calc':
+      return Icons.shield_outlined;
+    case 'mud-mixing':
+      return Icons.science_outlined;
+    case 'fasdrill':
+    case 'step-down-fasdrill':
+      return Icons.speed;
+    case 'casing-hydraulic-force':
+      return Icons.compress;
+    case 'stuck-pipe-identification':
+      return Icons.report_problem_outlined;
+    case 'directional-wells':
+      return Icons.explore_outlined;
+    case 'balanced-plug':
+    case 'balanced-plug-3-case':
+      return Icons.vertical_align_center;
+    case 'wiper-plug-cementation':
+      return Icons.swipe_down_alt;
+    case 'liner-cementation':
+      return Icons.layers_outlined;
+    case 'api-13d-power-law':
+    case 'bingham':
+    case 'hydraulics':
+      return Icons.ssid_chart;
+    case 'cutting-skips':
+      return Icons.inventory_2_outlined;
+    case 'whipstock':
+      return Icons.call_split;
+    case 'whipstock-fishing':
+      return Icons.construction;
+    case 'squeeze-cementing-ezsv':
+    case 'actual-result-squeeze':
+      return Icons.opacity;
+    case 'cementing-calculator':
+    case 'thickening-time':
+      return Icons.foundation;
+  }
+  return _categoryIcon(category);
+}
+
+IconData _categoryIcon(String category) {
+  switch (category) {
+    case 'Well Control':
+      return Icons.health_and_safety_outlined;
+    case 'Hydraulics':
+      return Icons.speed;
+    case 'Fluids':
+      return Icons.opacity;
+    case 'Fishing & Stuck Pipe':
+      return Icons.build_outlined;
+    case 'Directional':
+      return Icons.explore_outlined;
+    case 'Cementing':
+      return Icons.foundation;
+  }
+  return Icons.calculate_outlined;
+}
+
+IconData _resultIcon(FieldCalculatorTone tone) {
+  switch (tone) {
+    case FieldCalculatorTone.ok:
+      return Icons.task_alt;
+    case FieldCalculatorTone.warning:
+      return Icons.warning_amber;
+    case FieldCalculatorTone.danger:
+      return Icons.error_outline;
+    case FieldCalculatorTone.neutral:
+      return Icons.calculate_outlined;
+  }
+}
+
+Color _toneColor(BuildContext context, FieldCalculatorTone tone) {
+  final colors = Theme.of(context).colorScheme;
+  switch (tone) {
+    case FieldCalculatorTone.ok:
+      return const Color(0xFF164B35);
+    case FieldCalculatorTone.warning:
+      return const Color(0xFF6D4C00);
+    case FieldCalculatorTone.danger:
+      return colors.error;
+    case FieldCalculatorTone.neutral:
+      return colors.onSurface;
+  }
+}
 
 String _fmt(double value, int fractionDigits) {
   if (value.isNaN || value.isInfinite) {
