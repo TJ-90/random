@@ -11,24 +11,50 @@ class DrillCalcApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF00796B);
+    const seed = Color(0xFF006C60);
+    const fieldSurface = Color(0xFFF4F6F2);
+    final scheme = ColorScheme.fromSeed(
+      seedColor: seed,
+      brightness: Brightness.light,
+    );
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'DrillCalc Field',
       themeMode: ThemeMode.light,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seed,
-          brightness: Brightness.light,
-        ),
+        colorScheme: scheme,
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF4F6F5),
+        scaffoldBackgroundColor: fieldSurface,
+        textTheme: ThemeData.light().textTheme.apply(
+          bodyColor: const Color(0xFF1D2522),
+          displayColor: const Color(0xFF1D2522),
+        ),
         cardTheme: const CardThemeData(
           elevation: 0,
           margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(8)),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 13,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: scheme.primary, width: 1.4),
           ),
         ),
       ),
@@ -83,7 +109,14 @@ class _WellControlScreenState extends State<WellControlScreen> {
     final volumetric = calculator.volumetricMethod();
 
     return Scaffold(
-      body: SafeArea(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFEAF1EC), Color(0xFFF7F7F3)],
+          ),
+        ),
         child: LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 920;
@@ -93,14 +126,41 @@ class _WellControlScreenState extends State<WellControlScreen> {
                     children: [
                       SizedBox(
                         width: 380,
+                        child: _Reveal(
+                          child: _InputPanel(
+                            controllers: _controllers,
+                            onChanged: () => setState(() {}),
+                            onReset: _resetSample,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: _Reveal(
+                          offset: const Offset(0, 18),
+                          child: _ResultsPanel(
+                            kill: kill,
+                            kick: kick,
+                            influx: influx,
+                            volumetric: volumetric,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _Reveal(
                         child: _InputPanel(
                           controllers: _controllers,
                           onChanged: () => setState(() {}),
                           onReset: _resetSample,
                         ),
                       ),
-                      const SizedBox(width: 20),
-                      Expanded(
+                      const SizedBox(height: 16),
+                      _Reveal(
+                        offset: const Offset(0, 16),
                         child: _ResultsPanel(
                           kill: kill,
                           kick: kick,
@@ -109,37 +169,29 @@ class _WellControlScreenState extends State<WellControlScreen> {
                         ),
                       ),
                     ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _InputPanel(
-                        controllers: _controllers,
-                        onChanged: () => setState(() {}),
-                        onReset: _resetSample,
-                      ),
-                      const SizedBox(height: 16),
-                      _ResultsPanel(
-                        kill: kill,
-                        kick: kick,
-                        influx: influx,
-                        volumetric: volumetric,
-                      ),
-                    ],
                   );
 
-            return CustomScrollView(
-              slivers: [
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(
-                    wide ? 24 : 16,
-                    18,
-                    wide ? 24 : 16,
-                    28,
+            return SafeArea(
+              child: CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      wide ? 24 : 16,
+                      18,
+                      wide ? 24 : 16,
+                      28,
+                    ),
+                    sliver: SliverToBoxAdapter(
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1180),
+                          child: content,
+                        ),
+                      ),
+                    ),
                   ),
-                  sliver: SliverToBoxAdapter(child: content),
-                ),
-              ],
+                ],
+              ),
             );
           },
         ),
@@ -200,39 +252,86 @@ class _InputPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.surface.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: colors.outlineVariant),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: colors.primary,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colors.primary.withValues(alpha: 0.24),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Icon(Icons.oil_barrel, color: colors.onPrimary),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'DrillCalc Field',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text('Workbook-based well control'),
+                  ],
+                ),
+              ),
+              _Pressable(
+                child: IconButton.filledTonal(
+                  onPressed: onReset,
+                  tooltip: 'Reset sample values',
+                  icon: const Icon(Icons.restart_alt),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: colors.primary,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(Icons.oil_barrel, color: colors.onPrimary),
+            _InputBadge(
+              icon: Icons.fact_check_outlined,
+              label: 'Excel source',
+              foreground: colors.primary,
+              background: colors.primaryContainer.withValues(alpha: 0.5),
             ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'DrillCalc Field',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-                  ),
-                  SizedBox(height: 2),
-                  Text('Well control MVP'),
-                ],
-              ),
-            ),
-            IconButton.filledTonal(
-              onPressed: onReset,
-              tooltip: 'Reset sample values',
-              icon: const Icon(Icons.restart_alt),
+            _InputBadge(
+              icon: Icons.speed,
+              label: 'Live results',
+              foreground: const Color(0xFF6D4C00),
+              background: const Color(0xFFFFF0C2),
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         _Notice(
           icon: Icons.verified_user_outlined,
           text:
@@ -240,46 +339,55 @@ class _InputPanel extends StatelessWidget {
           tone: _NoticeTone.warning,
         ),
         const SizedBox(height: 16),
-        _SectionCard(
-          title: 'Well Data',
-          icon: Icons.vertical_align_bottom,
-          children: _fieldsFor(_FieldGroup.well)
-              .map(
-                (field) => _NumberInput(
-                  definition: field,
-                  controller: controllers[field.id]!,
-                  onChanged: onChanged,
-                ),
-              )
-              .toList(),
+        _Reveal(
+          offset: const Offset(0, 10),
+          child: _SectionCard(
+            title: 'Well Data',
+            icon: Icons.vertical_align_bottom,
+            children: _fieldsFor(_FieldGroup.well)
+                .map(
+                  (field) => _NumberInput(
+                    definition: field,
+                    controller: controllers[field.id]!,
+                    onChanged: onChanged,
+                  ),
+                )
+                .toList(),
+          ),
         ),
         const SizedBox(height: 12),
-        _SectionCard(
-          title: 'Kick Data',
-          icon: Icons.warning_amber,
-          children: _fieldsFor(_FieldGroup.kick)
-              .map(
-                (field) => _NumberInput(
-                  definition: field,
-                  controller: controllers[field.id]!,
-                  onChanged: onChanged,
-                ),
-              )
-              .toList(),
+        _Reveal(
+          offset: const Offset(0, 10),
+          child: _SectionCard(
+            title: 'Kick Data',
+            icon: Icons.warning_amber,
+            children: _fieldsFor(_FieldGroup.kick)
+                .map(
+                  (field) => _NumberInput(
+                    definition: field,
+                    controller: controllers[field.id]!,
+                    onChanged: onChanged,
+                  ),
+                )
+                .toList(),
+          ),
         ),
         const SizedBox(height: 12),
-        _SectionCard(
-          title: 'String, Pump, Safety',
-          icon: Icons.tune,
-          children: _fieldsFor(_FieldGroup.stringPump)
-              .map(
-                (field) => _NumberInput(
-                  definition: field,
-                  controller: controllers[field.id]!,
-                  onChanged: onChanged,
-                ),
-              )
-              .toList(),
+        _Reveal(
+          offset: const Offset(0, 10),
+          child: _SectionCard(
+            title: 'String, Pump, Safety',
+            icon: Icons.tune,
+            children: _fieldsFor(_FieldGroup.stringPump)
+                .map(
+                  (field) => _NumberInput(
+                    definition: field,
+                    controller: controllers[field.id]!,
+                    onChanged: onChanged,
+                  ),
+                )
+                .toList(),
+          ),
         ),
       ],
     );
@@ -490,6 +598,138 @@ class _ResultsPanel extends StatelessWidget {
   }
 }
 
+class _Reveal extends StatelessWidget {
+  const _Reveal({required this.child, this.offset = const Offset(0, 12)});
+
+  final Widget child;
+  final Offset offset;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: offset * (1 - value),
+            child: child,
+          ),
+        );
+      },
+      child: child,
+    );
+  }
+}
+
+class _Pressable extends StatefulWidget {
+  const _Pressable({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_Pressable> createState() => _PressableState();
+}
+
+class _PressableState extends State<_Pressable> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) {
+      return;
+    }
+    setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (_) => _setPressed(true),
+      onPointerUp: (_) => _setPressed(false),
+      onPointerCancel: (_) => _setPressed(false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.985 : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOutCubic,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class _InputBadge extends StatelessWidget {
+  const _InputBadge({
+    required this.icon,
+    required this.label,
+    required this.foreground,
+    required this.background,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color foreground;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: foreground.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: foreground),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: foreground,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label, required this.foreground});
+
+  final String label;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: foreground.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: foreground,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
 class _StatusHeader extends StatelessWidget {
   const _StatusHeader({required this.urgent, required this.influx});
 
@@ -504,38 +744,90 @@ class _StatusHeader extends StatelessWidget {
         ? colors.onErrorContainer
         : colors.onPrimaryContainer;
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: foreground.withValues(alpha: 0.14)),
+        boxShadow: [
+          BoxShadow(
+            color: foreground.withValues(alpha: urgent ? 0.10 : 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            urgent ? Icons.priority_high : Icons.task_alt,
-            color: foreground,
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: foreground.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              urgent ? Icons.priority_high : Icons.task_alt,
+              color: foreground,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  urgent
-                      ? 'Critical review required'
-                      : 'Inputs within draft envelope',
-                  style: TextStyle(
-                    color: foreground,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 18,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        urgent
+                            ? 'Critical review required'
+                            : 'Inputs within draft envelope',
+                        style: TextStyle(
+                          color: foreground,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 18,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _StatusPill(
+                      label: urgent ? 'Review' : 'OK',
+                      foreground: foreground,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${influx.influxType}. ${influx.recommendedAction}',
-                  style: TextStyle(color: foreground),
+                const SizedBox(height: 6),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeOutCubic,
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.12),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Text(
+                    '${influx.influxType}. ${influx.recommendedAction}',
+                    key: ValueKey(
+                      '${influx.influxType}-${influx.recommendedAction}',
+                    ),
+                    style: TextStyle(color: foreground, height: 1.25),
+                  ),
                 ),
               ],
             ),
@@ -586,50 +878,113 @@ class _MetricTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
-    return Container(
-      constraints: const BoxConstraints(minHeight: 104),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(metric.icon, size: 20, color: colors.primary),
-          const SizedBox(height: 14),
-          Text(
-            metric.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
-          ),
-          const SizedBox(height: 2),
-          FittedBox(
-            alignment: Alignment.centerLeft,
-            fit: BoxFit.scaleDown,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  metric.value,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                if (metric.unit.isNotEmpty) ...[
-                  const SizedBox(width: 4),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: Text(metric.unit),
-                  ),
-                ],
-              ],
+    return _Pressable(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        constraints: const BoxConstraints(minHeight: 104),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: colors.outlineVariant),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.045),
+              blurRadius: 14,
+              offset: const Offset(0, 8),
             ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: colors.primaryContainer.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(metric.icon, size: 18, color: colors.primary),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              metric.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colors.onSurfaceVariant,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            FittedBox(
+              alignment: Alignment.centerLeft,
+              fit: BoxFit.scaleDown,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _AnimatedValueText(
+                    value: metric.value,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                  if (metric.unit.isNotEmpty) ...[
+                    const SizedBox(width: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Text(metric.unit),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AnimatedValueText extends StatelessWidget {
+  const _AnimatedValueText({
+    required this.value,
+    required this.style,
+    this.textAlign,
+  });
+
+  final String value;
+  final TextStyle style;
+  final TextAlign? textAlign;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 160),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeOutCubic,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.18),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
           ),
-        ],
+        );
+      },
+      child: Text(
+        value,
+        key: ValueKey(value),
+        textAlign: textAlign,
+        style: style,
       ),
     );
   }
@@ -650,32 +1005,52 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
-    return Card(
-      color: colors.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: colors.primary, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: 0.98),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 9),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer.withValues(alpha: 0.52),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: colors.primary, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    letterSpacing: 0,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ...children,
-          ],
-        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
       ),
     );
   }
@@ -694,20 +1069,28 @@ class _NumberInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: controller,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        textInputAction: TextInputAction.next,
-        onChanged: (_) => onChanged(),
-        decoration: InputDecoration(
-          labelText: definition.label,
-          suffixText: definition.unit,
-          prefixIcon: Icon(definition.icon),
-          isDense: true,
-          border: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8)),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutCubic,
+        child: TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textInputAction: TextInputAction.next,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+          onChanged: (_) => onChanged(),
+          decoration: InputDecoration(
+            labelText: definition.label,
+            suffixText: definition.unit,
+            suffixStyle: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+            prefixIcon: Icon(definition.icon, color: colors.primary),
+            isDense: true,
           ),
         ),
       ),
@@ -739,10 +1122,13 @@ class _ResultRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Flexible(
-            child: Text(
-              unit.isEmpty ? value : '$value $unit',
-              textAlign: TextAlign.right,
-              style: const TextStyle(fontWeight: FontWeight.w700),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _AnimatedValueText(
+                value: unit.isEmpty ? value : '$value $unit',
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
             ),
           ),
         ],
@@ -760,11 +1146,14 @@ class _PressureSchedule extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: 0.48),
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.42),
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         children: [
@@ -789,14 +1178,26 @@ class _PressureSchedule extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          for (final step in steps)
+          for (final (index, step) in steps.indexed)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(
-                children: [
-                  Expanded(child: Text('${step.strokes}')),
-                  Text('${_fmt(step.pressurePsi, 0)} psi'),
-                ],
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: index.isEven
+                      ? colors.surface.withValues(alpha: 0.58)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(child: Text('${step.strokes}')),
+                    Text(
+                      '${_fmt(step.pressurePsi, 0)} psi',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
@@ -830,16 +1231,27 @@ class _Notice extends StatelessWidget {
         foreground = colors.onErrorContainer;
     }
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: foreground.withValues(alpha: 0.12)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: foreground, size: 20),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: foreground.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: foreground, size: 18),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(text, style: TextStyle(color: foreground)),
@@ -895,6 +1307,7 @@ class _FieldDefinition {
     required this.unit,
     required this.icon,
     required this.rawValue,
+    this.displayFractionDigits,
   });
 
   final _FieldId id;
@@ -903,9 +1316,13 @@ class _FieldDefinition {
   final String unit;
   final IconData icon;
   final double Function(WellControlInputs inputs) rawValue;
+  final int? displayFractionDigits;
 
   String value(WellControlInputs inputs) {
     final number = rawValue(inputs);
+    if (displayFractionDigits != null) {
+      return number.toStringAsFixed(displayFractionDigits!);
+    }
     if (number == number.roundToDouble()) {
       return number.toStringAsFixed(0);
     }
@@ -1057,10 +1474,11 @@ final _fieldDefinitions = [
   _FieldDefinition(
     id: _FieldId.surfaceToBitStrokes,
     group: _FieldGroup.stringPump,
-    label: 'String strokes',
+    label: 'Pump strokes',
     unit: 'stk',
     icon: Icons.av_timer,
     rawValue: (inputs) => inputs.surfaceToBitStrokes,
+    displayFractionDigits: 0,
   ),
   _FieldDefinition(
     id: _FieldId.gasGradientPsiPerFt,

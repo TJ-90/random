@@ -7,9 +7,11 @@ void main() {
     await tester.pumpWidget(const DrillCalcApp());
 
     expect(find.text('DrillCalc Field'), findsOneWidget);
-    expect(find.text('Well control MVP'), findsOneWidget);
+    expect(find.text('Workbook-based well control'), findsOneWidget);
     expect(find.text('Kill Sheet', skipOffstage: false), findsOneWidget);
     expect(find.text('Kick Tolerance', skipOffstage: false), findsOneWidget);
+    expect(find.text('Pump strokes', skipOffstage: false), findsOneWidget);
+    expect(find.text('3066', skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('renders the first frame on a phone viewport', (tester) async {
