@@ -177,9 +177,15 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
 
       final singleNozzleArea = nozzleSize * nozzleSize / 1303.8;
       final totalFlowArea = singleNozzleArea * nozzleCount;
+      // Standard bit nozzle pressure drop: MW * Q^2 / (10858 * TFA^2).
+      // The source workbook (Bits & LCM B7) omitted the square on TFA,
+      // which its own Bingham sheet applies correctly.
       final bitPressureDrop = totalFlowArea <= 0
           ? 0.0
-          : flowRate * flowRate * mudWeight / (10858 * totalFlowArea);
+          : flowRate *
+                flowRate *
+                mudWeight /
+                (10858 * totalFlowArea * totalFlowArea);
       final hydraulicHorsepower = bitPressureDrop * flowRate / 1714;
       final hsi = holeDiameter <= 0
           ? 0.0
@@ -315,11 +321,25 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
           : holeAngle < 60
           ? 150.0
           : 180.0;
-      final maxSafeRop = holeSize <= 9.875
-          ? (flowRate * math.pow(transportIndex, 0.6) - 280) / 6
-          : holeSize <= 14
-          ? (flowRate * math.pow(transportIndex, 0.6) - 500) / 13
-          : (flowRate * math.pow(transportIndex, 0.6) - 750) / 18;
+      final maxSafeRop = math
+          .max(
+            0,
+            holeSize <= 9.875
+                ? (flowRate * math.pow(transportIndex, 0.6) - 280) / 6
+                : holeSize <= 14
+                ? (flowRate * math.pow(transportIndex, 0.6) - 500) / 13
+                : (flowRate * math.pow(transportIndex, 0.6) - 750) / 18,
+          )
+          .toDouble();
+      // Workbook H34: cuttings generation rate vs annular flow rate, both
+      // converted to cubic ft/min (ROP m/hr -> ft/min, GPM -> cu ft/min).
+      final cuttingsRateCuFtMin =
+          (rop * 3.281 / 60) * holeSize * holeSize * 0.7854 / 144;
+      final flowRateCuFtMin = flowRate / 7.48;
+      final cuttingsConcentration = _safeDiv(
+        cuttingsRateCuFtMin * 100,
+        flowRateCuFtMin + cuttingsRateCuFtMin,
+      );
 
       return [
         _num('Annular area', annularArea, 'bbl/ft', digits: 4),
@@ -335,11 +355,15 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
               : FieldCalculatorTone.warning,
         ),
         _num('Minimum annular velocity', minVelocity, 'ft/min', digits: 0),
+        _num('Max safe ROP at this flow', maxSafeRop, 'm/hr', digits: 1),
         _num(
-          'Max safe ROP at this flow',
-          maxSafeRop.toDouble(),
-          'm/hr',
-          digits: 1,
+          'Cuttings concentration',
+          cuttingsConcentration,
+          '% (<5 ideal)',
+          digits: 2,
+          tone: cuttingsConcentration > 5
+              ? FieldCalculatorTone.warning
+              : FieldCalculatorTone.neutral,
         ),
       ];
     },
@@ -603,7 +627,21 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
         _num('Hole volume', holeVolume, 'bbl', digits: 1),
         _num('Expected volume', expectedVolume, 'bbl', digits: 2),
         _num('Expected strokes', strokes, 'stk', digits: 0),
-        _num('Approx PV/FV', mudWeight * 4, 'cP', digits: 0),
+        _num(
+          'Pressure per bbl pumped',
+          holeVolume * compressibility <= 0
+              ? 0.0
+              : 1 / (holeVolume * compressibility),
+          'psi/bbl',
+          digits: 0,
+        ),
+        // Workbook rule of thumb (FIT CALC I3): funnel viscosity ~ 4 x MW.
+        _num(
+          'Approx funnel viscosity (rule of thumb)',
+          mudWeight * 4,
+          's',
+          digits: 0,
+        ),
       ];
     },
   ),
@@ -741,20 +779,25 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
       final bitShare = surfacePressure <= 0
           ? 0.0
           : bitDrop * 100 / surfacePressure;
-      final optimumImpactDrop = 2 / (exponent + 2) * maxPressure;
-      final optimumHhpDrop = 1 / (exponent + 1) * maxPressure;
+      // Hydraulic optimization (parasitic loss Pc = K*Q^m):
+      //   max jet impact force -> bit dP = m/(m+2) * Pmax
+      //   max bit HHP          -> bit dP = m/(m+1) * Pmax
+      // The source workbook reported the PARASITIC losses (2/(m+2), 1/(m+1))
+      // but labeled them as bit pressure drops; corrected here.
+      final optimumImpactDrop = exponent / (exponent + 2) * maxPressure;
+      final optimumHhpDrop = exponent / (exponent + 1) * maxPressure;
 
       return [
         _num('Hydraulic horsepower', hhp, 'hp', digits: 1),
         _num('HSI', hsi, 'hp/sq in', digits: 2),
         _num('Bit pressure share', bitShare, '%', digits: 1),
         _num(
-          'Optimum drop for impact force',
+          'Optimum bit drop for impact force',
           optimumImpactDrop,
           'psi',
           digits: 0,
         ),
-        _num('Optimum drop for HHP', optimumHhpDrop, 'psi', digits: 0),
+        _num('Optimum bit drop for HHP', optimumHhpDrop, 'psi', digits: 0),
         _text(
           'Recommendation',
           bitShare < 50
@@ -853,6 +896,18 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
         defaultValue: 8.681,
       ),
       FieldCalculatorInput(
+        id: 'casingWeight',
+        label: 'Casing weight',
+        unit: 'ppf',
+        defaultValue: 47,
+      ),
+      FieldCalculatorInput(
+        id: 'casingLength',
+        label: 'Casing length',
+        unit: 'ft',
+        defaultValue: 12000,
+      ),
+      FieldCalculatorInput(
         id: 'shoeTrackLength',
         label: 'Shoe track length',
         unit: 'ft',
@@ -869,22 +924,46 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
       final pressure = _v(values, 'pressure');
       final casingOd = _v(values, 'casingOd');
       final casingId = _v(values, 'casingId');
+      final casingWeight = _v(values, 'casingWeight');
+      final casingLength = _v(values, 'casingLength');
       final shoeTrack = _v(values, 'shoeTrackLength');
       final mudWeight = _v(values, 'mudWeight');
-      final insideArea = math.pi * casingId * casingId / 4;
+      // Workbook CSG HYDRAULICING FORCE treats the casing as a piston of
+      // full OD cross-section (I1 = pi * OD^2 / 4).
+      final pistonArea = math.pi * casingOd * casingOd / 4;
       final metalArea = math
           .max(0, math.pi * (casingOd * casingOd - casingId * casingId) / 4)
           .toDouble();
-      final upwardForce = pressure * insideArea / 1000;
+      final airWeight = casingWeight * casingLength / 1000;
+      // Workbook buoyancy factor: 1 - (MW in SG / 7.85).
+      final buoyancyFactor = 1 - (mudWeight / ppgPerSg) / 7.85;
+      final buoyedWeight = airWeight * buoyancyFactor;
+      final upwardForce = pressure * pistonArea / 1000;
+      final netForce = buoyedWeight - upwardForce;
+      final liftPressure = pistonArea <= 0
+          ? 0.0
+          : buoyedWeight * 1000 / pistonArea;
       final shoeTrackVolume = pipeCapacity(casingId) * shoeTrack;
-      final hydrostaticPerFt = mudWeight * ppgGradientFactor;
 
       return [
-        _num('Inside hydraulic area', insideArea, 'sq in', digits: 1),
+        _num('Casing piston area (OD)', pistonArea, 'sq in', digits: 1),
         _num('Steel area', metalArea, 'sq in', digits: 1),
-        _num('Hydraulic force', upwardForce, 'klbf', digits: 1),
+        _num('Casing air weight', airWeight, 'klbf', digits: 1),
+        _num('Buoyancy factor', buoyancyFactor, '', digits: 3),
+        _num('Buoyed casing weight', buoyedWeight, 'klbf', digits: 1),
+        _num('Upward hydraulic force', upwardForce, 'klbf', digits: 1),
+        _num('Net force (down +ve)', netForce, 'klbf', digits: 1),
+        _num('Pressure to lift casing', liftPressure, 'psi', digits: 0),
         _num('Shoe track volume', shoeTrackVolume, 'bbl', digits: 1),
-        _num('Hydrostatic gradient', hydrostaticPerFt, 'psi/ft', digits: 3),
+        _text(
+          'Pump-up status',
+          netForce > 0
+              ? 'Casing stays down at this pressure'
+              : 'Pressure can hydraulically lift the casing',
+          tone: netForce > 0
+              ? FieldCalculatorTone.ok
+              : FieldCalculatorTone.danger,
+        ),
       ];
     },
   ),
@@ -1234,6 +1313,12 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
         defaultValue: 6.184,
       ),
       FieldCalculatorInput(
+        id: 'prevCasingId',
+        label: 'Previous casing ID',
+        unit: 'in',
+        defaultValue: 9.438,
+      ),
+      FieldCalculatorInput(
         id: 'openHoleLength',
         label: 'Open-hole length',
         unit: 'ft',
@@ -1244,6 +1329,25 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
         label: 'Liner overlap',
         unit: 'ft',
         defaultValue: 300,
+      ),
+      FieldCalculatorInput(
+        id: 'linerTopMd',
+        label: 'Liner top MD',
+        unit: 'ft',
+        defaultValue: 11000,
+      ),
+      FieldCalculatorInput(
+        id: 'shoeTrackLength',
+        label: 'Shoe track length',
+        unit: 'ft',
+        defaultValue: 80,
+      ),
+      FieldCalculatorInput(
+        id: 'dpCapacity',
+        label: 'DP capacity',
+        unit: 'bbl/ft',
+        defaultValue: 0.0206,
+        fractionDigits: 4,
       ),
       FieldCalculatorInput(
         id: 'excess',
@@ -1262,24 +1366,38 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
       final hole = _v(values, 'holeDiameter');
       final linerOd = _v(values, 'linerOd');
       final linerId = _v(values, 'linerId');
+      final prevCasingId = _v(values, 'prevCasingId');
       final openHoleLength = _v(values, 'openHoleLength');
       final overlap = _v(values, 'overlapLength');
+      final linerTop = _v(values, 'linerTopMd');
+      final shoeTrack = _v(values, 'shoeTrackLength');
+      final dpCapacity = _v(values, 'dpCapacity');
       final excess = _v(values, 'excess') / 100;
       final yield = _v(values, 'yield');
       final ohCapacity = annularCapacityFn(hole, linerOd);
-      final overlapCapacity = annularCapacityFn(hole, linerOd);
+      // The overlap annulus is liner inside the PREVIOUS casing, not the
+      // open hole (legacy version reused the open-hole capacity here).
+      final overlapCapacity = annularCapacityFn(prevCasingId, linerOd);
       final linerCapacity = pipeCapacity(linerId);
+      final linerLength = openHoleLength + overlap;
       final slurryVolume =
           ohCapacity * openHoleLength * (1 + excess) +
-          overlapCapacity * overlap;
+          overlapCapacity * overlap +
+          linerCapacity * shoeTrack;
       final sacks = yield <= 0 ? 0.0 : slurryVolume * 5.6146 / yield;
-      final displacement = linerCapacity * (openHoleLength + overlap);
+      // Workbook displacement: DP capacity down to the liner top, then
+      // liner capacity from liner top to the landing collar.
+      final displacement =
+          dpCapacity * linerTop +
+          linerCapacity * math.max(0, linerLength - shoeTrack);
 
       return [
         _num('Open-hole annular capacity', ohCapacity, 'bbl/ft', digits: 4),
-        _num('Slurry volume', slurryVolume, 'bbl', digits: 1),
+        _num('Overlap annular capacity', overlapCapacity, 'bbl/ft', digits: 4),
+        _num('Liner length', linerLength, 'ft', digits: 0),
+        _num('Slurry volume (incl shoe track)', slurryVolume, 'bbl', digits: 1),
         _num('Cement sacks', sacks, 'sk', digits: 0),
-        _num('Liner displacement', displacement, 'bbl', digits: 1),
+        _num('Displacement (DP + liner)', displacement, 'bbl', digits: 1),
         _num(
           'Open-hole excess volume',
           ohCapacity * openHoleLength * excess,
@@ -1354,13 +1472,16 @@ final List<FieldCalculatorDefinition> _fieldCalculators = [
         hole * hole - pipeOd * pipeOd,
       );
       final hydraulicDiameter = math.max(0.01, hole - pipeOd);
-      final pressureLoss =
-          0.0000765 *
-          math.pow(flowRate, 1.82) *
-          math.pow(mudWeight, 0.82) *
-          math.pow(math.max(theta600 - theta300, 1), 0.18) *
-          length /
-          (math.pow(hydraulicDiameter, 3) * math.pow(hole + pipeOd, 1.8));
+      final lossDenominator =
+          math.pow(hydraulicDiameter, 3) * math.pow(hole + pipeOd, 1.8);
+      final pressureLoss = lossDenominator <= 0
+          ? 0.0
+          : 0.0000765 *
+                math.pow(flowRate, 1.82) *
+                math.pow(mudWeight, 0.82) *
+                math.pow(math.max(theta600 - theta300, 1), 0.18) *
+                length /
+                lossDenominator;
 
       return [
         _num('Flow behavior index n', n, '', digits: 3),
@@ -2323,10 +2444,12 @@ const Map<String, Map<String, String>> _workbookFormulaNotes = {
   'bits-lcm': {
     'Nozzle area': 'nozzleSize^2 / 1303.8',
     'TFA': 'singleNozzleArea * nozzleCount',
-    'Nozzle pressure drop': 'flowRate^2 * mudWeight / (10858 * TFA)',
+    'Nozzle pressure drop':
+        'flowRate^2 * mudWeight / (10858 * TFA^2) — workbook omitted the '
+            'square on TFA; corrected per standard bit hydraulics',
     'HHP': 'nozzlePressureDrop * flowRate / 1714',
     'HSI': 'HHP * 1.27 / holeDiameter^2',
-    'LCM pass limit': 'hydraulicDiameter * 25.4 / 3 vs maxParticle * 0.8',
+    'LCM pass limit': 'nozzleDiameter * 25.4 / 3 vs maxParticle * 0.8',
   },
   'hole-cleaning': {
     'Annular area': '(holeSize^2 - pipeOd^2) / 1029.4',
@@ -2335,6 +2458,8 @@ const Map<String, Map<String, String>> _workbookFormulaNotes = {
     'Angle factor': 'SPE 27486 angle lookup',
     'Transport index': 'RF * AF * mudWeightSG',
     'Critical flow rate': 'base CFR * washout correction',
+    'Cuttings concentration':
+        'cuttingsRate / (flowRate + cuttingsRate), both in cu ft/min',
   },
   'loss-monitoring': {
     'Calculated loss': 'max(0, pumpedVolume - returnedVolume)',
@@ -2359,6 +2484,8 @@ const Map<String, Map<String, String>> _workbookFormulaNotes = {
     'Required pressure': '(fitEmw - mudWeight) * depthTvd * 0.052',
     'Expected volume': 'holeVolume * requiredPressure * compressibility',
     'Expected strokes': 'expectedVolume / pumpOutput',
+    'Pressure per bbl': '1 / (holeVolume * compressibility)',
+    'Funnel viscosity rule of thumb': '4 * mudWeight (seconds, workbook I3)',
   },
   'mud-mixing': {
     'Barite density': 'bariteSG * 350',
@@ -2371,8 +2498,10 @@ const Map<String, Map<String, String>> _workbookFormulaNotes = {
     'HHP': 'bitPressureDrop * flowRate / 1714',
     'HSI': 'HHP / bitArea',
     'Bit pressure share': 'bitPressureDrop / surfacePressure',
-    'Optimum impact drop': '2 / (m + 2) * maxPressure',
-    'Optimum HHP drop': '1 / (m + 1) * maxPressure',
+    'Optimum bit drop (impact)':
+        'm / (m + 2) * maxPressure — workbook reported the parasitic loss '
+            '2/(m+2) and labeled it as bit drop; corrected',
+    'Optimum bit drop (HHP)': 'm / (m + 1) * maxPressure — corrected likewise',
   },
   'step-down-fasdrill': {
     'Dynamic pressure': 'referencePressure - staticOffset',
@@ -2381,9 +2510,11 @@ const Map<String, Map<String, String>> _workbookFormulaNotes = {
     'Pressure drop': 'referencePressure - targetPressure',
   },
   'casing-hydraulic-force': {
-    'Inside area': 'pi * casingId^2 / 4',
+    'Piston area': 'pi * casingOd^2 / 4 (workbook I1)',
     'Steel area': 'pi * (casingOd^2 - casingId^2) / 4',
-    'Hydraulic force': 'pressure * insideArea / 1000',
+    'Buoyancy factor': '1 - (MW/8.33)/7.85 (workbook B12)',
+    'Upward hydraulic force': 'pressure * pistonArea / 1000',
+    'Pressure to lift casing': 'buoyedWeight * 1000 / pistonArea (workbook I12)',
     'Shoe track volume': 'casingId^2 / 1029.4 * shoeTrackLength',
   },
   'stuck-pipe-identification': {
@@ -2412,9 +2543,15 @@ const Map<String, Map<String, String>> _workbookFormulaNotes = {
   },
   'liner-cementation': {
     'Open-hole annulus': '(holeDiameter^2 - linerOd^2) / 1029.4',
-    'Slurry volume': 'openHoleVolume * (1 + excess) + overlapVolume',
+    'Overlap annulus':
+        '(prevCasingId^2 - linerOd^2) / 1029.4 — legacy version wrongly '
+            'reused the open-hole capacity for the overlap',
+    'Slurry volume':
+        'openHoleVol * (1 + excess) + overlapVol + shoeTrackVol',
     'Sacks': 'slurryVolume * 5.6146 / slurryYield',
-    'Displacement': 'linerId^2 / 1029.4 * linerLength',
+    'Displacement':
+        'dpCap * linerTop + linerCap * (linerLength - shoeTrack) '
+            '(workbook C29)',
   },
   'api-13d-power-law': {
     'Flow index n': '3.32 * log10(theta600 / theta300)',

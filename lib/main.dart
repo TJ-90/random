@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 
 import 'calculators/field_calculators.dart';
 import 'calculators/well_control.dart';
+import 'reports/pdf_report.dart';
 
 void main() {
   runApp(const DrillCalcApp());
@@ -85,14 +89,11 @@ class _CalculatorLibraryScreenState extends State<CalculatorLibraryScreen> {
   @override
   Widget build(BuildContext context) {
     final query = _query.trim().toLowerCase();
-    final entries = _calculatorEntries.where((entry) {
-      if (query.isEmpty) {
-        return true;
-      }
-      return entry.title.toLowerCase().contains(query) ||
-          entry.category.toLowerCase().contains(query) ||
-          entry.summary.toLowerCase().contains(query);
-    }).toList();
+    final entries = query.isEmpty
+        ? _calculatorEntries
+        : _calculatorEntries
+              .where((entry) => entry.searchText.contains(query))
+              .toList();
     final grouped = <String, List<_CalculatorEntry>>{};
     for (final entry in entries) {
       grouped.putIfAbsent(entry.category, () => []).add(entry);
@@ -308,6 +309,7 @@ class _GenericCalculatorScreenState extends State<GenericCalculatorScreen> {
             summary: definition.summary,
             icon: _calculatorIcon(definition.id, definition.category),
             onReset: _reset,
+            onSharePdf: _sharePdf,
           ),
           const SizedBox(height: 12),
           _SectionCard(
@@ -407,6 +409,44 @@ class _GenericCalculatorScreenState extends State<GenericCalculatorScreen> {
       }
     });
   }
+
+  void _sharePdf() {
+    showPdfReportActions(
+      context,
+      filename: '${widget.definition.id}-report.pdf',
+      buildPdf: _buildReport,
+    );
+  }
+
+  Future<Uint8List> _buildReport() {
+    final definition = widget.definition;
+    final values = _readValues();
+    final results = definition.calculate(values);
+    final notes = workbookFormulaNotes(definition);
+
+    return buildDrillCalcReport(
+      title: definition.title,
+      category: definition.category,
+      summary: definition.summary,
+      sections: [
+        ReportSection('Inputs', [
+          for (final input in definition.inputs)
+            ReportRow(
+              input.label,
+              '${_controllers[input.id]!.text.trim()} ${input.unit}'.trim(),
+            ),
+        ]),
+        ReportSection('Results', [
+          for (final result in results)
+            ReportRow(result.label, result.displayValue),
+        ]),
+      ],
+      notes: [
+        'Source sheet: ${workbookSourceSheet(definition)}',
+        for (final note in notes) '${note.label}: ${note.value}',
+      ],
+    );
+  }
 }
 
 class WellControlScreen extends StatefulWidget {
@@ -479,6 +519,7 @@ class _WellControlScreenState extends State<WellControlScreen> {
                             controllers: _controllers,
                             onChanged: () => setState(() {}),
                             onReset: _resetSample,
+                            onSharePdf: _sharePdf,
                           ),
                         ),
                       ),
@@ -504,6 +545,7 @@ class _WellControlScreenState extends State<WellControlScreen> {
                           controllers: _controllers,
                           onChanged: () => setState(() {}),
                           onReset: _resetSample,
+                          onSharePdf: _sharePdf,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -591,6 +633,168 @@ class _WellControlScreenState extends State<WellControlScreen> {
       pressureIncrementPsi: read(_FieldId.pressureIncrementPsi),
     );
   }
+
+  void _sharePdf() {
+    showPdfReportActions(
+      context,
+      filename: 'well-control-kill-sheet.pdf',
+      buildPdf: _buildReport,
+    );
+  }
+
+  Future<Uint8List> _buildReport() {
+    final inputs = _readInputs();
+    final calculator = WellControlCalculator(inputs);
+    final kill = calculator.killSheet();
+    final kick = calculator.kickTolerance();
+    final influx = calculator.influxAnalysis();
+    final volumetric = calculator.volumetricMethod();
+
+    return buildDrillCalcReport(
+      title: 'Well Control Kill Sheet',
+      category: 'Well Control',
+      summary:
+          'Kill sheet, kick tolerance, influx analysis, and volumetric '
+          'method calculated from the entered well data.',
+      sections: [
+        ReportSection('Well & Kick Data', [
+          for (final field in _fieldDefinitions)
+            ReportRow(
+              field.label,
+              '${_controllers[field.id]!.text.trim()} ${field.unit}'.trim(),
+            ),
+        ]),
+        ReportSection('Kill Sheet', [
+          ReportRow(
+            'Formation pressure',
+            '${_fmt(kill.formationPressurePsi, 0)} psi',
+          ),
+          ReportRow(
+            'Present hydrostatic',
+            '${_fmt(kill.presentHydrostaticPsi, 0)} psi',
+          ),
+          ReportRow('Kill mud weight', '${_fmt(kill.killMudWeightPpg, 2)} ppg'),
+          ReportRow('Kill mud weight', '${_fmt(kill.killMudWeightSg, 2)} sg'),
+          ReportRow(
+            'Initial circulating pressure (ICP)',
+            '${_fmt(kill.initialCirculatingPressurePsi, 0)} psi',
+          ),
+          ReportRow(
+            'Final circulating pressure (FCP)',
+            '${_fmt(kill.finalCirculatingPressurePsi, 0)} psi',
+          ),
+          ReportRow('Pressure drop', '${_fmt(kill.pressureDropPsi, 0)} psi'),
+          ReportRow(
+            'Drop per 100 strokes',
+            '${_fmt(kill.dropPerHundredStrokesPsi, 1)} psi',
+          ),
+        ]),
+        ReportSection('Kick Tolerance', [
+          ReportRow('MAASP', '${_fmt(kick.maaspPsi, 0)} psi'),
+          ReportRow(
+            'Fracture pressure at shoe',
+            '${_fmt(kick.fracturePressureAtShoePsi, 0)} psi',
+          ),
+          ReportRow(
+            'Hydrostatic at shoe',
+            '${_fmt(kick.hydrostaticAtShoePsi, 0)} psi',
+          ),
+          ReportRow(
+            'Max influx height',
+            '${_fmtNullable(kick.maxInfluxHeightFt, 0)} ft',
+          ),
+          ReportRow(
+            'Kick tolerance around DP',
+            '${_fmtNullable(kick.kickToleranceAroundDpBbl, 1)} bbl',
+          ),
+          ReportRow(
+            'Kick tolerance mixed DC/DP',
+            '${_fmtNullable(kick.kickToleranceMixedBbl, 1)} bbl',
+          ),
+          ReportRow(
+            'Max kill MW without influx',
+            '${_fmt(kick.maxKillMudWeightNoInfluxPpg, 2)} ppg',
+          ),
+        ]),
+        ReportSection('Influx Analysis', [
+          ReportRow('Influx type', influx.influxType),
+          ReportRow('Influx height', '${_fmt(influx.influxHeightFt, 0)} ft'),
+          ReportRow(
+            'Influx gradient',
+            '${_fmt(influx.influxGradientPsiPerFt, 3)} psi/ft',
+          ),
+          ReportRow(
+            'Influx density',
+            '${_fmt(influx.influxDensityPpg, 2)} ppg',
+          ),
+          ReportRow(
+            'MW increase required',
+            '${_fmt(influx.mudWeightIncreaseRequiredPpg, 2)} ppg',
+          ),
+          ReportRow(
+            'MAASP (current mud)',
+            '${_fmt(influx.maaspCurrentMudPsi, 0)} psi',
+          ),
+          ReportRow(
+            'MAASP (kill mud)',
+            '${_fmt(influx.maaspKillMudPsi, 0)} psi',
+          ),
+          if (influx.estimatedGasSurfacePressurePsi != null)
+            ReportRow(
+              'Est. gas surface pressure',
+              '${_fmt(influx.estimatedGasSurfacePressurePsi!, 0)} psi',
+            ),
+          ReportRow('Recommended action', influx.recommendedAction),
+        ]),
+        ReportSection('Volumetric Method', [
+          ReportRow(
+            'Max allowable SICP',
+            '${_fmt(volumetric.maxAllowableSicpPsi, 0)} psi',
+          ),
+          ReportRow(
+            'Next bleed start',
+            '${_fmt(volumetric.nextBleedStartPressurePsi, 0)} psi',
+          ),
+          ReportRow(
+            'First bleed target',
+            '${_fmt(volumetric.firstBleedTargetPsi, 0)} psi',
+          ),
+          ReportRow(
+            'Bleed volume per step (open hole)',
+            '${_fmt(volumetric.volumeToBleedOpenHoleBbl, 1)} bbl',
+          ),
+          ReportRow(
+            'Bleed volume per step (cased hole)',
+            '${_fmt(volumetric.volumeToBleedCasedHoleBbl, 1)} bbl',
+          ),
+          ReportRow(
+            'Operating window',
+            volumetric.hasOperatingWindow
+                ? 'Window exists before max allowable SICP'
+                : 'No safe window with current margin/increment',
+          ),
+        ]),
+      ],
+      tables: [
+        ReportTable(
+          title: 'Wait & Weight pump pressure schedule',
+          headers: const ['Strokes', 'Pressure (psi)'],
+          rows: [
+            for (final step in kill.pressureSchedule)
+              ['${step.strokes}', _fmt(step.pressurePsi, 0)],
+          ],
+        ),
+      ],
+      notes: const [
+        'Kill MW = current MW + SIDPP / (0.052 x hole TVD)',
+        'ICP = SCR + SIDPP; FCP = SCR x kill MW / current MW',
+        'MAASP = (LOT EMW - mud weight) x 0.052 x shoe TVD',
+        'Kick tolerance per workbook Kick Tolerance sheet (gas gradient '
+            'assumption, influx hung at the shoe)',
+        'Volumetric bleed volume = pressure increment / hydrostatic per bbl',
+      ],
+    );
+  }
 }
 
 class _InputPanel extends StatelessWidget {
@@ -598,11 +802,13 @@ class _InputPanel extends StatelessWidget {
     required this.controllers,
     required this.onChanged,
     required this.onReset,
+    required this.onSharePdf,
   });
 
   final Map<_FieldId, TextEditingController> controllers;
   final VoidCallback onChanged;
   final VoidCallback onReset;
+  final VoidCallback onSharePdf;
 
   @override
   Widget build(BuildContext context) {
@@ -661,6 +867,14 @@ class _InputPanel extends StatelessWidget {
                   ],
                 ),
               ),
+              _Pressable(
+                child: IconButton.filledTonal(
+                  onPressed: onSharePdf,
+                  tooltip: 'PDF report',
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                ),
+              ),
+              const SizedBox(width: 4),
               _Pressable(
                 child: IconButton.filledTonal(
                   onPressed: onReset,
@@ -1278,6 +1492,7 @@ class _CalculatorDetailHeader extends StatelessWidget {
     required this.summary,
     required this.icon,
     required this.onReset,
+    required this.onSharePdf,
   });
 
   final String title;
@@ -1285,6 +1500,7 @@ class _CalculatorDetailHeader extends StatelessWidget {
   final String summary;
   final IconData icon;
   final VoidCallback onReset;
+  final VoidCallback onSharePdf;
 
   @override
   Widget build(BuildContext context) {
@@ -1348,6 +1564,14 @@ class _CalculatorDetailHeader extends StatelessWidget {
               ),
               _Pressable(
                 child: IconButton.filledTonal(
+                  onPressed: onSharePdf,
+                  tooltip: 'PDF report',
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                ),
+              ),
+              const SizedBox(width: 4),
+              _Pressable(
+                child: IconButton.filledTonal(
                   onPressed: onReset,
                   tooltip: 'Reset default values',
                   icon: const Icon(Icons.restart_alt),
@@ -1402,7 +1626,10 @@ class _GenericNumberInput extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: TextField(
         controller: controller,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        keyboardType: const TextInputType.numberWithOptions(
+          decimal: true,
+          signed: true,
+        ),
         textInputAction: TextInputAction.next,
         style: const TextStyle(fontWeight: FontWeight.w700),
         onChanged: (_) => onChanged(),
@@ -1989,7 +2216,10 @@ class _NumberInput extends StatelessWidget {
         curve: Curves.easeOutCubic,
         child: TextField(
           controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(
+            decimal: true,
+            signed: true,
+          ),
           textInputAction: TextInputAction.next,
           style: const TextStyle(fontWeight: FontWeight.w700),
           onChanged: (_) => onChanged(),
@@ -2418,40 +2648,44 @@ final _fieldDefinitions = [
 ];
 
 class _CalculatorEntry {
-  const _CalculatorEntry({
+  _CalculatorEntry({
     required this.title,
     required this.category,
     required this.summary,
     required this.icon,
     this.definition,
-  });
+  }) : searchText = '$title $category $summary'.toLowerCase();
 
   final String title;
   final String category;
   final String summary;
   final IconData icon;
   final FieldCalculatorDefinition? definition;
+
+  /// Precomputed lowercase haystack so searching does not re-lowercase
+  /// every entry on each keystroke.
+  final String searchText;
 }
 
-List<_CalculatorEntry> get _calculatorEntries {
-  return [
-    const _CalculatorEntry(
-      title: 'Well Control',
-      category: 'Well Control',
-      summary:
-          'Kill sheet, kick tolerance, influx analysis, and volumetric method.',
-      icon: Icons.oil_barrel,
+/// Built once and reused; the previous getter rebuilt the whole list on
+/// every library rebuild.
+final List<_CalculatorEntry> _calculatorEntries = [
+  _CalculatorEntry(
+    title: 'Well Control',
+    category: 'Well Control',
+    summary:
+        'Kill sheet, kick tolerance, influx analysis, and volumetric method.',
+    icon: Icons.oil_barrel,
+  ),
+  for (final definition in fieldCalculators)
+    _CalculatorEntry(
+      title: definition.title,
+      category: definition.category,
+      summary: definition.summary,
+      icon: _calculatorIcon(definition.id, definition.category),
+      definition: definition,
     ),
-    for (final definition in fieldCalculators)
-      _CalculatorEntry(
-        title: definition.title,
-        category: definition.category,
-        summary: definition.summary,
-        icon: _calculatorIcon(definition.id, definition.category),
-        definition: definition,
-      ),
-  ];
-}
+];
 
 IconData _calculatorIcon(String id, String category) {
   switch (id) {
@@ -2562,4 +2796,78 @@ String _fmtNullable(double? value, int fractionDigits) {
     return 'ERR';
   }
   return _fmt(value, fractionDigits);
+}
+
+/// Offers the two PDF actions for a generated report: share (which includes
+/// saving to the phone's files) and the native print / save-as-PDF dialog.
+Future<void> showPdfReportActions(
+  BuildContext context, {
+  required String filename,
+  required Future<Uint8List> Function() buildPdf,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 6),
+              child: Text(
+                'PDF report',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.ios_share),
+              title: const Text('Share or save to phone'),
+              subtitle: const Text(
+                'Opens the share sheet - send it or save it to your files',
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _runPdfAction(context, () async {
+                  final bytes = await buildPdf();
+                  await Printing.sharePdf(bytes: bytes, filename: filename);
+                });
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.print_outlined),
+              title: const Text('Print or save as PDF'),
+              subtitle: const Text('Uses the system print dialog'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _runPdfAction(context, () async {
+                  await Printing.layoutPdf(
+                    name: filename,
+                    onLayout: (_) => buildPdf(),
+                  );
+                });
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+Future<void> _runPdfAction(
+  BuildContext context,
+  Future<void> Function() action,
+) async {
+  try {
+    await action();
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not create the PDF report: $error')),
+      );
+    }
+  }
 }

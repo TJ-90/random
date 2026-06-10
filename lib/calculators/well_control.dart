@@ -150,6 +150,9 @@ class InfluxAnalysisResult {
     required this.maaspKillMudPsi,
     required this.canCirculateSafely,
     required this.recommendedAction,
+    required this.hasInflux,
+    required this.gradientIsReliable,
+    this.estimatedGasSurfacePressurePsi,
   });
 
   final double bottomHolePressurePsi;
@@ -163,6 +166,19 @@ class InfluxAnalysisResult {
   final double maaspKillMudPsi;
   final bool canCirculateSafely;
   final String recommendedAction;
+
+  /// False when pit gain is zero or negative, so no fingerprinting is
+  /// possible. The legacy workbook misreported this case as a gas kick.
+  final bool hasInflux;
+
+  /// False when the computed influx gradient falls outside the physically
+  /// meaningful range (0 to mud gradient), which means the shut-in inputs
+  /// are inconsistent and the classification should not be trusted.
+  final bool gradientIsReliable;
+
+  /// Workbook `Influx Analysis` H36: SIDPP + influx hydrostatic. Only
+  /// meaningful when an influx exists.
+  final double? estimatedGasSurfacePressurePsi;
 }
 
 class VolumetricMethodResult {
@@ -321,9 +337,11 @@ class WellControlCalculator {
         kill.formationPressurePsi -
         inputs.influxAnalysisSicpPsi -
         mudHydrostaticAboveInflux;
-    final influxGradient = influxHeight <= 0
-        ? 0.0
-        : influxHydrostatic / influxHeight;
+    final hasInflux = inputs.pitGainBbl > 0 && influxHeight > 0;
+    final influxGradient = hasInflux ? influxHydrostatic / influxHeight : 0.0;
+    final mudGradient = inputs.currentMudWeightPpg * ppgGradientFactor;
+    final gradientIsReliable =
+        hasInflux && influxGradient > 0 && influxGradient <= mudGradient;
     final influxDensity = influxGradient / ppgGradientFactor;
     final maaspCurrent = maaspPsi(
       lotFitEmwPpg: inputs.lotFitEmwPpg,
@@ -335,7 +353,20 @@ class WellControlCalculator {
       mudWeightPpg: kill.killMudWeightPpg,
       casingShoeTvdFt: inputs.casingShoeTvdFt,
     );
-    final type = classifyInflux(influxGradient);
+    final String type;
+    final String action;
+    if (!hasInflux) {
+      type = 'NO INFLUX (pit gain = 0)';
+      action = 'Enter the observed pit gain to fingerprint the influx';
+    } else if (!gradientIsReliable) {
+      type = 'UNRELIABLE - CHECK INPUTS';
+      action =
+          'Computed gradient is outside 0 to mud gradient. '
+          'Re-check stabilized SIDPP, SICP, and pit gain.';
+    } else {
+      type = classifyInflux(influxGradient);
+      action = _recommendedAction(type);
+    }
 
     return InfluxAnalysisResult(
       bottomHolePressurePsi: kill.formationPressurePsi,
@@ -349,7 +380,12 @@ class WellControlCalculator {
       maaspCurrentMudPsi: maaspCurrent,
       maaspKillMudPsi: maaspKill,
       canCirculateSafely: inputs.influxAnalysisSicpPsi < maaspCurrent,
-      recommendedAction: _recommendedAction(type),
+      recommendedAction: action,
+      hasInflux: hasInflux,
+      gradientIsReliable: !hasInflux || gradientIsReliable,
+      estimatedGasSurfacePressurePsi: hasInflux && gradientIsReliable
+          ? inputs.sidppPsi + influxHydrostatic
+          : null,
     );
   }
 
@@ -403,24 +439,33 @@ class WellControlCalculator {
     required double finalPressure,
     required double dropPerHundredStrokes,
   }) {
-    if (dropPerHundredStrokes <= 0) {
+    if (dropPerHundredStrokes <= 0 || initialPressure <= finalPressure) {
       return [PressureStep(strokes: 0, pressurePsi: initialPressure)];
     }
 
     final steps = <PressureStep>[];
     for (
       var strokes = 0;
-      strokes <= inputs.surfaceToBitStrokes;
+      strokes <= inputs.surfaceToBitStrokes && steps.length < 400;
       strokes += 100
     ) {
       final pressure = math.max(
         finalPressure,
         initialPressure - dropPerHundredStrokes * strokes / 100,
       );
-      steps.add(PressureStep(strokes: strokes.round(), pressurePsi: pressure));
+      steps.add(PressureStep(strokes: strokes, pressurePsi: pressure));
       if (pressure <= finalPressure) {
         break;
       }
+    }
+    // Close the schedule exactly at FCP when the bit is reached.
+    if (steps.isEmpty || steps.last.pressurePsi > finalPressure) {
+      steps.add(
+        PressureStep(
+          strokes: inputs.surfaceToBitStrokes.round(),
+          pressurePsi: finalPressure,
+        ),
+      );
     }
     return steps;
   }
@@ -476,6 +521,10 @@ double influxHeightFromVolume({
       (volumeBbl - lowerSectionVolume) / upperCapacityBblPerFt;
 }
 
+/// Standard influx-gradient fingerprinting bands (psi/ft):
+/// gas 0.05-0.15, gas-cut mud / light oil 0.15-0.25, oil 0.25-0.40,
+/// saltwater 0.40-0.47, heavy brine above 0.47. The legacy workbook used
+/// 0.45 for the saltwater boundary, contradicting its own reference table.
 String classifyInflux(double gradientPsiPerFt) {
   if (gradientPsiPerFt < 0.15) {
     return 'GAS KICK';
@@ -486,7 +535,7 @@ String classifyInflux(double gradientPsiPerFt) {
   if (gradientPsiPerFt < 0.40) {
     return 'OIL KICK';
   }
-  if (gradientPsiPerFt < 0.45) {
+  if (gradientPsiPerFt < 0.47) {
     return 'SALTWATER KICK';
   }
   return 'SALTWATER / HEAVY BRINE';
